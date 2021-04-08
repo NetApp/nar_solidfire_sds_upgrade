@@ -19,7 +19,7 @@ Role Variables
 
 | Variable                            | Required | Default       | Description                                                                                                                    |
 |-------------------------------------|----------|---------------|--------------------------------------------------------------------------------------------------------------------------------|
-| solidfire_element_rpm               | Yes      | N/A           | URL or path to the SolidFire eSDS RPM. For example https://<hostname>/<path>/solidfire-element-<version>.<platform>.<arch>.rpm |
+| solidfire_element_rpm               | Yes      | N/A           | URL or local path to the SolidFire eSDS RPM file on controller. See examples at the end of this table \[1\]                    |
 | sf_mgmt_virt_ip                     | Yes      | N/A           | Virtual IP address (MVIP) for the management interface                                                                         |
 | sf_cluster_admin_passwd             | Yes      | N/A           | The password for the Cluster Administrator user (Recommend using ansible vault)                                                |
 | sf_cluster_admin_username           | Yes      | sfadmin       | The username for the Cluster Administrator user                                                                                |
@@ -40,6 +40,9 @@ Role Variables
 |                                     |          |               | When set to True, users can chose to specify in the inventory a subset of the cluster nodes to be upgraded. However, the       |
 |                                     |          |               | cluster version will not be updated until all nodes have been upgraded.                                                        |
 
+\[1\]:
+URL: 'https://<hostname>/<path>/solidfire-element-<version>.<platform>.<arch>.rpm' or
+local path : `/<downloaded rpm path on Control node >/solidfire-element-<version>.<platform>.<arch>.rpm`
 
 Dependencies
 ------------

@@ -17,39 +17,8 @@
     sf_already_upgraded: []
   no_log: True
 
-# This loads a checker for the variables required by this role
-- name: Make sure requried variables are set/defined
-  include_tasks: verify-variables.yml
-
-# Query the cluster MVIP for its node name list and node ID list
-- name: Make sure we loaded the node info module
-  include_tasks: node-info.yml
-
-- name: Ensure we fail if we didn't collect cluster info
-  fail:
-    msg: "Can't upgrade! No names and node IDs found for this cluster: {{ sf_mgmt_virt_ip }}"
-  when: >
-    (sf_node_ids is undefined or sf_node_ids.keys()|length == 0) or
-    (sf_cluster_node_data is undefined or sf_cluster_node_data|length == 0)
-
-- name: Ensure we only upgrade cluster members (comparing cluster list to inventory)
-  fail:
-    msg: "Error: '{{ ansible_host }}' is not a member of the {{ sf_mgmt_virt_ip }} cluster!"
-  when: not (
-    (ansible_host and ansible_host|sf_get_node_info(sf_cluster_node_data, 'name')) or
-    (ansible_hostname and ansible_hostname|sf_get_node_info(sf_cluster_node_data, 'name'))
-    )
-
-- name: Make sure we verify whether all cluster nodes are to be upgraded
-  when: sf_node_ids.keys()|length > ansible_play_batch|length
-  block:
-    - set_fact:
-        main_upgrade_subset: True
-    - fail:
-        msg: >-
-          Cluster {{ sf_mgmt_virt_ip }} consists {{ sf_node_ids.keys()|length }} nodes but only {{ ansible_play_batch|length }} are for upgrade!
-          If subset upgrade is desired, please set variable sf_allow_cluster_subset_upgrade to True.
-      when: not sf_allow_cluster_subset_upgrade
+- name: Make sure we're ready for upgrade.
+  include_tasks: pre-upgrade-checks.yml
 
 # We only need to do this once per cluster, so only letting one
 # node perform the operation, once (the controller)

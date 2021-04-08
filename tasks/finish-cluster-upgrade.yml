@@ -35,7 +35,7 @@
     - set_fact:
         sf_cluster_error: True
       when: >
-        request.json.error is defined and (not main_upgrade_subset or
+        request.json.error is defined and (not sf_allow_cluster_subset_upgrade or
         (request.json.error.message is defined and
          request.json.error.message != "All nodes must be at the same version to complete an upgrade"))
 

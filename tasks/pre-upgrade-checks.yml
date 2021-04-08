@@ -59,13 +59,6 @@
   when: sf_maint_mode_duration is undefined or not sf_maint_mode_duration
   no_log: True
 
-- name: Ensure we fail when we find cluster faults
-  set_fact:
-    yes_i_want_to_ignore_cluster_faults: False
-  when: yes_i_want_to_ignore_cluster_faults is undefined
-  no_log: True
-
-
 - name: Ensure we have the list of installed packages
   package_facts:
     manager: auto
@@ -89,7 +82,7 @@
     sf_regex_repl_2: '\1'
   no_log: True
 
-- name: Make sure we know the version of the requested package
+- name: Ensure we know the version of the requested package
   set_fact:
     sf_new_package_ver: "{{ solidfire_element_rpm|regex_replace( sf_regex_repl_1, sf_regex_repl_2 ) }}"
   failed_when: sf_new_package_ver is undefined or
@@ -111,7 +104,7 @@
     sf_current_package_ver is version( sf_new_package_ver, '>=' )
   no_log: True
 
-- name: Make sure the Management Virtual IP responds
+- name: Ensure the Management Virtual IP responds
   delegate_to: localhost
   run_once: True
   wait_for:
@@ -120,3 +113,65 @@
     port: 443
     timeout: 120
     state: started
+
+- name: "Ensure the RPM path is valid"
+  include_role:
+    name: nar_solidfire_sds_install
+    tasks_from: validate-rpm.yml
+
+- name: Ensure we fail if a cluster fault is blocking upgrade
+  any_errors_fatal: True
+  run_once: True
+  when: not yes_i_want_to_ignore_cluster_faults
+  block:
+    - name: Ensure we check cluster faults
+      uri:
+        url: "https://{{ sf_mgmt_virt_ip }}:443/json-rpc/{{ sf_api_version }}"
+        method: POST
+        url_username: "{{ sf_cluster_admin_username }}"
+        url_password: "{{ sf_cluster_admin_passwd }}"
+        force_basic_auth: True
+        timeout: "{{ sf_cluster_connect_timeout }}"
+        body_format: json
+        body:
+          method: 'ListClusterFaults'
+          params:
+            faultTypes: "current"
+        return_content: True
+        validate_certs: "{{ sf_validate_certs | bool }}"
+        use_proxy: "{{ sf_use_proxy | bool }}"
+        force: True
+        follow_redirects: safe
+      register: query
+    - name: Ensure we fail if any cluster fault is blocking upgrade
+      fail:
+        msg: "Please resolve cluster fault then try upgrade again"
+      when: item.blocksUpgrade == true and item.resolved == false
+      with_items: "{{ query.json.result.faults }}"
+
+- name: Ensure we check cluster members
+  block:
+    - name: Ensure we have cluster node info
+      include_tasks: node-info.yml
+
+    - fail:
+        msg: "Can't upgrade! No names and node IDs found for this cluster: {{ sf_mgmt_virt_ip }}"
+      when: >
+        (sf_node_ids is undefined or sf_node_ids.keys()|length == 0) or
+        (sf_cluster_node_data is undefined or sf_cluster_node_data|length == 0)
+
+    - name: Ensure we only upgrade cluster members (comparing cluster list to inventory)
+      fail:
+        msg: "Error: '{{ ansible_host }}' is not a member of the {{ sf_mgmt_virt_ip }} cluster!"
+      when: not (
+        (ansible_host and ansible_host|sf_get_node_info(sf_cluster_node_data, 'name')) or
+        (ansible_hostname and ansible_hostname|sf_get_node_info(sf_cluster_node_data, 'name'))
+        )
+
+- name: Ensure we check whether all cluster nodes are to be upgraded
+  run_once: True
+  fail:
+    msg: >-
+      Cluster {{ sf_mgmt_virt_ip }} consists {{ sf_node_ids.keys()|length }} nodes but only {{ ansible_play_batch|length }} are for upgrade!
+      If subset upgrade is desired, please set variable sf_allow_cluster_subset_upgrade to True.
+  when: (sf_node_ids.keys()|length > ansible_play_batch|length) and (not sf_allow_cluster_subset_upgrade)
