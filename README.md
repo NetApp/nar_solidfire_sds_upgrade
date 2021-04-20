@@ -11,7 +11,7 @@ This role is designed to perform an update of the NetApp SolidFire Enterprise SD
 Requirements
 ------------
 1. This role requires that NetApp/Solidfire eSDS be running on the target systems.
-2. It also requires the `nar_solidfire_sds_install` role, which is available on GitHub (https://github.com/netapp/ansible).
+2. It also requires the `nar_solidfire_sds_install` role, which is available on GitHub (https://github.com/NetApp-Automation/nar_solidfire_sds_install).
 
 
 Role Variables
@@ -46,7 +46,7 @@ local path : `/<downloaded rpm path on Control node >/solidfire-element-<version
 
 Dependencies
 ------------
-The `nar_solidfire_sds_install` role, available on GitHub (https://github.com/netapp/ansible) provides a few of the tasks used by this `nar_solidfire_sds_upgrade` role.
+The `nar_solidfire_sds_install` role, available on GitHub (https://github.com/NetApp-Automation/nar_solidfire_sds_install) provides a few of the tasks used by this `nar_solidfire_sds_upgrade` role.
 
 
 An Example Playbook

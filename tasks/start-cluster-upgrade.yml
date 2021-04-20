@@ -11,7 +11,7 @@
     body:
       method: 'StartUpgrade'
       params:
-        packageName: "solidfire-rtfi-magnesium-patch2-{{ sf_new_package_ver }}"
+        packageName: "solidfire-element-{{ sf_new_package_ver }}"
     return_content: True
     validate_certs: "{{ sf_validate_certs | bool }}"
     use_proxy: "{{ sf_use_proxy | bool }}"
