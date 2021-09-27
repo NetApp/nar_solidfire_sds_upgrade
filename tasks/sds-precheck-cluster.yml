@@ -1,0 +1,21 @@
+---
+# This file contains cluster related validations for eSDS
+
+- name: Ensure a node is excluded if it does not belong to the given cluster
+  fail:
+    msg: "Error: '{{ inventory_hostname }}' is not a member of the cluster ({{ sf_mgmt_virt_ip }})!"
+  when: >
+    not
+      (
+        (ansible_host and ansible_host|sf_get_node_info(sf_cluster_node_data, 'name')) or
+        (ansible_hostname and ansible_hostname|sf_get_node_info(sf_cluster_node_data, 'name'))
+      )
+
+- name: Ensure we fail if number of nodes for upgrade is less than number of nodes in the cluster and subset upgrade is not allowed
+  any_errors_fatal: True
+  run_once: True
+  fail:
+    msg: >-
+      Cluster {{ sf_mgmt_virt_ip }} consists of {{ sf_node_ids.keys()|length }} nodes but only {{ ansible_play_batch|length }} are for upgrade!
+      If subset upgrade is desired, please set variable sf_allow_cluster_subset_upgrade to True then try again.
+  when: (sf_node_ids.keys()|length > ansible_play_batch|length) and (not sf_allow_cluster_subset_upgrade)

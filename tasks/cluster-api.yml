@@ -1,0 +1,25 @@
+---
+- name: Make a cluster API call
+  delegate_to: localhost
+  run_once: True
+  block:
+    - name: "Calling cluster API {{ url_cmd|default() }}"
+      uri:
+        url: "https://{{ sf_mgmt_virt_ip }}/json-rpc/{{ sf_api_version }}/?{{ url_cmd|default() }}"
+        method: "{{ http_method }}"
+        url_username: "{{ sf_cluster_admin_username }}"
+        url_password: "{{ sf_cluster_admin_passwd }}"
+        status_code: "{{ expected_status|default(200) }}"
+        timeout: "{{ sf_cluster_connect_timeout }}"
+        validate_certs: "{{ sf_validate_certs | bool }}"
+        use_proxy: "{{ sf_use_proxy | bool }}"
+        force_basic_auth: yes
+        force: yes
+        follow_redirects: safe
+        return_content: yes
+        body_format: json
+        body: "{{ cmd_body|default({}) }}"
+      register: clus_api_response
+      until: clus_api_response.status is in [expected_status|default(200)]
+      retries: 3
+      delay: 10

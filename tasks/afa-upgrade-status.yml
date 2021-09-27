@@ -1,0 +1,44 @@
+---
+- name: Poll upgrade status periodically
+  delegate_to: localhost
+  run_once: True
+  when: afa_upgrade_state in ["unknown", "initializing", "preparing", "running", "resuming", "pausing"]
+  block:
+    - set_fact:
+        http_method: GET
+        url_cmd: "storage/1/upgrades/{{ upg_id }}"
+        expected_status: 200
+
+    - name: Continue to poll upgrade status
+      include_tasks: afa-hcc-api.yml
+      vars:
+        http_method: GET
+        url_cmd: "storage/1/upgrades/{{ upg_id }}"
+        expected_status: 200
+
+    - name: "Poll {{ poll_count }} of max {{ afa_poll_max|int }}"
+      debug:
+        msg: "operation state: {{ hcc_response.json.state }}"
+      no_log: False
+
+    - name: Ensure we know node details if available in the returned result
+      debug:
+        var: hcc_response.json.status.nodeDetails
+      when: >
+        hcc_response.json is defined and hcc_response.json.status is defined and
+        hcc_response.json.status.nodeDetails is defined
+
+    - name: Save latest upgrade state for processing
+      set_fact:
+        afa_upgrade_state: "{{ hcc_response.json.state }}"
+
+    - name: Ensure we exit if the upgrade operation is paused or failed
+      fail:
+        msg: "The upgrade operation state is '{{ afa_upgrade_state }}'. Please resolve any issue then run Ansible again when ready to resume/retry"
+      when: afa_upgrade_state in ["failed", "error", "paused", "pausedWithError"]
+
+    - name: Ensure we wait for the operation to finish if it's still running
+      pause:
+        prompt: "Wait {{ (afa_poll_interval|int / 60)|int }} minutes to check upgrade status again"
+        seconds: "{{ afa_poll_interval|int }}"
+      when: afa_upgrade_state in ["initializing", "preparing", "running", "resuming", "pausing"]

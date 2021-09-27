@@ -1,0 +1,24 @@
+---
+- name: Check and perform Upgrade 
+  delegate_to: localhost
+  run_once: True
+  block:
+    - name: Set some internal variables
+      set_fact:
+        afa_storage_id: "unknown"
+        afa_package_id: "unknown"
+        afa_upgrade_id: "unknown"
+        afa_upgrade_state: "unknown"
+        afa_poll_max: "{{ ((sf_node_ids|length - sf_already_upgraded|length) * afa_poll_duration|int / afa_poll_interval|int )|int }}"
+
+    - name: Ensure we are authorized to perform the operation
+      include_tasks: afa-authentication.yml
+
+    - name: Ensure we know the package ID of the requested version
+      include_tasks: afa-package-id.yml
+
+    - name: Ensure we know the storage ID of the requested cluster
+      include_tasks: afa-inventory.yml
+
+    - name: Ensure we know next allowed action for requested upgrade
+      include_tasks: afa-upgrade-actions.yml

@@ -1,0 +1,14 @@
+---
+- name: Resume upgrade
+  block:
+    - include_tasks: afa-hcc-api.yml
+      vars:
+        http_method: PUT
+        url_cmd: "storage/1/upgrades/{{ upg_id }}?action=resume"
+        cmd_body: {"action":"resume","config":{}}
+
+    - name: Ensure we raise an upgrade event for resuming a paused operation
+      include_tasks: upgrade-event.yml
+      vars:
+        evt_msg: "Resume"
+        package_name: "solidfire-rtfi"

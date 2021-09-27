@@ -1,0 +1,83 @@
+---
+- name: Query upgrade state to determine what action to take next
+  block:
+    - name: "Query if any unfinished upgrade operation already existing for cluster {{ sf_mgmt_virt_ip }}"
+      include_tasks: afa-hcc-api.yml
+      vars:
+        http_method: GET
+        url_cmd: "storage/1/upgrades?includeCompleted=false&storageId={{ afa_storage_id }}"
+        expected_status: 200
+
+    - name: Ensure we save some attributes if an unfinished upgrade operation is found
+      set_fact:
+        prev_upgrade_state: "{{ hcc_response.json[0].state }}"
+        prev_upgrade_pkg_id: "{{ hcc_response.json[0].packageId }}"
+        prev_upgrade_id: "{{ hcc_response.json[0].upgradeId }}"
+      when: hcc_response.json is defined and hcc_response.json[0] is defined
+ 
+    - name: Ensure we fail if an upgrade operation is active with a different version
+      fail:
+        msg: Cannot start upgrade when an upgrade operation is already active with a different version on the same cluster.
+      when: >
+        prev_upgrade_pkg_id is defined and prev_upgrade_pkg_id != afa_package_id and
+        prev_upgrade_state is not in ["error", "failed", "finished"]
+
+    - name: Check paused upgrade with the same version
+      when: prev_upgrade_pkg_id is defined and prev_upgrade_pkg_id == afa_package_id and prev_upgrade_state is in ["pausedWithError", "paused"]
+      block:
+        - name: "Ensure we fail if an existing upgrade operation for version {{ solidfire_rtfi_pkg_version }} is paused and resume is not allowed"
+          fail:
+            msg: "If resume the paused upgrade operation is safe and desired, please set variable sf_allow_resume_paused_upgrade to true then try again"
+          when: sf_allow_resume_paused_upgrade is undefined or not sf_allow_resume_paused_upgrade|bool
+
+        - name: "Ensure we resume if the existing upgrade operation for version {{ solidfire_rtfi_pkg_version }} is paused and resume is allowed"
+          include_tasks: afa-upgrade-resume.yml
+          vars:
+            upg_id: "{{ prev_upgrade_id }}"
+          when: sf_allow_resume_paused_upgrade is defined and sf_allow_resume_paused_upgrade|bool
+
+    # afa-upgrade-start.yml should set afa_upgrade_id if successful and should fail if unsuccessful
+    - name: "Request HCC to start a new upgrade operation with version {{ solidfire_rtfi_pkg_version }} if no existing operation was found"
+      include_tasks: afa-upgrade-start.yml
+      when: >
+        sf_final_status != "success" and
+        ((hcc_response.status == 200 and hcc_response.json == []) or
+         (prev_upgrade_state is defined and prev_upgrade_state is in ["failed", "error"]))
+ 
+    # We'll continue to poll status when: prev_upgrade_state is in ["initializing", "preparing", "running", "resuming", "pausing"].
+    - name: Ensure we save the upgrade ID if a previously existing upgrade operation is found active
+      set_fact:
+        afa_upgrade_id: "{{ prev_upgrade_id }}"
+      when: >
+        sf_final_status != "success" and afa_upgrade_id == "unknown"
+
+    - debug:
+        var: afa_upgrade_id
+      when: sf_final_status != "success"
+      failed_when: afa_upgrade_id == "unknown" and sf_final_status != "success"
+
+    - name: Ensure we monitor the upgrade operation progress if one is running
+      include_tasks: afa-upgrade-status.yml
+      vars:
+        upg_id: "{{ afa_upgrade_id }}"
+        poll_count: "{{ item }}"
+      when: sf_final_status != "success" and afa_upgrade_id != "unknown"
+      with_sequence: count="{{ afa_poll_max|int }}"
+
+    - name: "Ensure we exit if HCC has not returned a terminal state after {{ afa_poll_max|int }} polls"
+      fail:
+        msg: "The upgrade operation state is '{{ afa_upgrade_state }}'. Please make sure nothing is blocking then try again"
+      when: afa_upgrade_state in ["initializing", "preparing", "running", "resuming", "pausing"]
+
+    - name: Check if the upgrade operation has finished
+      when: afa_upgrade_state == "finished"
+      block:
+        - name: Ensure we raise final upgrade event if the operation has finished
+          include_tasks: upgrade-event.yml
+          vars:
+            evt_msg: "Complete"
+            package_name: "solidfire-rtfi"
+
+        - name: Ensure we set final status to success if the operation has finished
+          set_fact:
+            sf_final_status: "success"

@@ -1,0 +1,28 @@
+---
+- name: Check required variables shared by eSDS and AFA
+  any_errors_fatal: True
+  run_once: True
+  block:
+    - name: Ensure we fail if the cluster admin username is missing
+      fail:
+        msg: "The Cluster Administrator's username is not specified (sf_cluster_admin_username)"
+      when: sf_cluster_admin_username is undefined or not sf_cluster_admin_username
+
+    - name: Ensure we fail if the cluster admin password is missing
+      fail:
+        msg: "The Cluster Administrator's password is not specified (sf_cluster_admin_passwd)"
+      when: sf_cluster_admin_passwd is undefined or not sf_cluster_admin_passwd
+
+    - name: Ensure we fail if the cluster's MVIP address is missing or invalid
+      fail:
+        msg: "MVIP address (sf_mgmt_virt_ip) is not a valid IP address"
+      when: sf_mgmt_virt_ip is undefined or not sf_mgmt_virt_ip|ipaddr
+ 
+    - name: Ensure the MVIP is reachable
+      wait_for:
+        connect_timeout: 5
+        host: "{{ sf_mgmt_virt_ip }}"
+        port: 443
+        timeout: 120
+        state: started
+

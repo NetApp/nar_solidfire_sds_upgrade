@@ -1,0 +1,40 @@
+---
+- name: Ensure we deactivate Maintenance Mode
+  any_errors_fatal: True
+  when: sf_in_maintenance_mode|bool
+  block:
+    - name: "{{ attempt_count }} of {{ sds_poll_max_maint_disable|int }} attempts to disable Maintenance Mode for {{ target_name }}/{{ target_MIP }}/ID:{{ target_id }}"
+      include_tasks: cluster-api.yml
+      vars:
+        http_method: POST
+        cmd_body: {"method":"DisableMaintenanceMode","params":{"nodes":["{{ target_id }}"]}}
+
+    - set_fact:
+        dResponse: "{{ clus_api_response }}"
+
+    - name: "Ensure we record a change if node {{ target_name }}/{{ target_MIP }}/ID:{{ target_id }} has exited Maintenance Mode"
+      set_fact:
+        sf_in_maintenance_mode: False
+      when: >
+        (dResponse.json.result is defined and
+         dResponse.json.result.currentMode is defined and
+         dResponse.json.result.currentMode == 'Disabled') or
+        (dResponse.json.error is defined and
+         dResponse.json.error.name is defined and
+         dResponse.json.error.name == 'xAlreadyInResponseedMode')
+
+- name: "Ensure we further exam the returned response if node {{ target_name }}/{{ target_MIP }}/ID:{{ target_id }} is still in Maintenance Mode"
+  include_tasks: sds-node-status.yml
+  vars:
+    response: "{{ dResponse }}"
+    target_status: "Disabled"
+    so_far_attempts: "{{ attempt_count }}"
+    max_attempts: "{{ sds_poll_max_maint_disable|int }}"
+  when: sf_in_maintenance_mode|bool
+
+- name: "Wait {{ (sds_poll_interval_maint_disable|int / 60)|int }} minutes then retry DisableMaintenanceMode for {{ target_name }}/{{ target_MIP }}/ID:{{ target_id }}"
+  pause:
+    seconds: "{{ sds_poll_interval_maint_disable|int }}"
+  when:
+    -  sf_in_maintenance_mode|bool
+    -  attempt_count|int <= sds_poll_max_maint_disable|int

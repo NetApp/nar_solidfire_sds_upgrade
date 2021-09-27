@@ -1,0 +1,28 @@
+---
+- name: Validate required variables
+  delegate_to: localhost
+  run_once: True
+  block:
+    - name: Ensure we fail if extra hosts are in playbook
+      fail:
+        msg: "The upgrade role for AFA cluster should only run on localhost. Please remove extra hosts from playbook/inventory"
+      when: "'localhost' is not in ansible_play_hosts_all or ansible_play_hosts_all|length > 1"
+
+    - name: Ensure we fail if mNode IP is not given
+      fail:
+        msg: "The required variable mnode_ip is not defined"
+      when: mnode_ip is not defined
+
+    - name: Ensure we fail if element package version is not given
+      fail:
+        msg: "The required variable solidfire_rtfi_pkg_version is not defined"
+      when: solidfire_rtfi_pkg_version is not defined
+
+    - set_fact:
+        sf_new_pkg_ver: "{{ solidfire_rtfi_pkg_version }}"
+
+    - name: Ensure we fail if authentication credentials are not given
+      fail:
+        msg: "The required variable hcc_auth_username/hcc_auth_passwd are missing"
+      when: hcc_auth_username is undefined or hcc_auth_passwd is undefined
+

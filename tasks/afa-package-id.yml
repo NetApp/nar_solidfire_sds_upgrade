@@ -1,0 +1,28 @@
+---
+# Query packages to find the ID of the package that matches given version.
+
+- name: Ensure we know software package ID
+  delegate_to: localhost
+  run_once: True
+  block:
+    - name: "Query package version {{ solidfire_rtfi_pkg_version }}"
+      include_tasks: afa-hcc-api.yml
+      vars:
+        http_method: GET
+        url_cmd: "package-repository/1/packages?name=solidfire-rtfi&version={{ solidfire_rtfi_pkg_version }}"
+  
+    - set_fact:
+        package_response: "{{ hcc_response }}"
+
+    - name: "Save package ID if version {{ solidfire_rtfi_pkg_version }} is found"
+      set_fact: 
+        afa_package_id: "{{ package_response.json[0].id }}"
+      when: package_response.json is defined and package_response.json[0] is defined
+  
+    - debug:
+        var: afa_package_id
+
+    - name: Ensure we fail if package ID is not found
+      fail:
+        msg: "No solidfire-rtfi package found with version {{ solidfire_rtfi_pkg_version }}"
+      when: afa_package_id == "unknown"

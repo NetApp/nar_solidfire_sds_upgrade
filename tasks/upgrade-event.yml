@@ -1,0 +1,8 @@
+---
+- name: Raise UpgradeEvent with an Ansible role signature
+  block:
+    - name: "Raise a cluster upgrade event with a '{{ evt_msg }}' message"
+      include_tasks: cluster-api.yml
+      vars:
+        http_method: POST
+        cmd_body: {"method":"CreateEvent","params":{"eventType":"upgradeEvent","message":"Ansible: Storage Cluster Upgrade {{ evt_msg }}","data":{"packageName":"{{ package_name }}","currentVersion":"{{ sf_installed_pkg_ver }}","newVersion":"{{ sf_new_pkg_ver }}"},"nodeID":0}}

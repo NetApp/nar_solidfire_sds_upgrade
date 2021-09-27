@@ -1,0 +1,28 @@
+---
+- name: Query all clusters to look for the storage ID of the requested cluster
+  block:
+    - name: Get all clusters in an installation
+      include_tasks: afa-hcc-api.yml
+      vars:
+        http_method: GET
+        url_cmd: "inventory/1/installations/{{ inst_id }}"
+
+    - set_fact:
+        clus_response: "{{ hcc_response }}"
+
+    - name: "Save storage id if cluster MVIP matches {{ sf_mgmt_virt_ip }}"
+      set_fact:
+        afa_storage_id: "{{ cluster.id }}"
+      when: cluster.mvip == sf_mgmt_virt_ip 
+      loop_control:
+        loop_var: cluster
+      loop: "{{ clus_response.json.storage.inventory.clusters }}"
+      no_log: True
+
+    - debug:
+        var: afa_storage_id
+
+    - name: Ensure we fail if storage ID is not found
+      fail:
+         msg: "Storage ID not found for cluster {{ sf_mgmt_virt_ip }}"
+      when: afa_storage_id == "unknown"

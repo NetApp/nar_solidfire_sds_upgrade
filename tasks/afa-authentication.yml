@@ -1,0 +1,47 @@
+---
+# Authentication with HCC services
+
+- name: Ensure we are authorized to perform the operation
+  delegate_to: localhost
+  run_once: True
+  block:
+    - name: Query authentication cluster
+      uri:
+        url: "https://{{ mnode_ip }}/mnode/about"
+        method: GET
+        return_content: True
+        follow_redirects: safe
+        force: True
+        url_username: "{{ hcc_auth_username }}"
+        url_password: "{{ hcc_auth_passwd }}"
+        force_basic_auth: true
+        timeout: "{{ sf_cluster_connect_timeout }}"
+        validate_certs: "{{ sf_validate_certs | default(True) | bool }}"
+        use_proxy: "{{ sf_use_proxy | default(False) | bool }}"
+      register: response
+
+    - set_fact:
+        auth_token_url: "{{ response.json.token_url }}"
+      no_log: True
+
+    - name: Perform authentication
+      uri:
+        url: "{{ auth_token_url }}"
+        method: POST
+        return_content: yes
+        validate_certs: "{{ sf_validate_certs }}"
+        body_format: form-urlencoded
+        body:
+          grant_type: "password"
+          client_id: "mnode-client"
+          username: "{{ hcc_auth_username }}"
+          password: "{{ hcc_auth_passwd }}"
+      until: response.status == 200
+      retries: 3
+      delay: 10
+      register: response
+
+    - set_fact:
+        auth_token_access: "{{ response.json.access_token }}"
+      failed_when: auth_token_access is undefined
+      no_log: True

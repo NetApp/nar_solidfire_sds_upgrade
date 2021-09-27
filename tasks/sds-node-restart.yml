@@ -1,0 +1,48 @@
+---
+# This will only be called if the node was able to enter Maintenance Mode
+# successfully
+- name: "Ensure we switch to SolidFire eSDS v{{ sf_new_pkg_ver }} on {{ target_name }}/{{ target_MIP }}"
+  become: True
+  when: sf_in_maintenance_mode|bool
+  systemd:
+    daemon-reload: True
+    name: solidfire
+    state: restarted
+  failed_when: not sf_in_maintenance_mode|bool
+
+- name: "Waiting for SolidFire eSDS service to be ready on {{ target_name }}/{{ target_MIP }}"
+  pause:
+    echo: False
+    seconds: 60
+
+- name: "Check SolidFire eSDS service state on {{ target_name }}/{{ target_MIP }}"
+  become: True
+  command: systemctl is-active solidfire
+  register: systemd_status
+
+- debug:
+    var: systemd_status
+
+- name: Ensure we fail if the SolidFire eSDS service failed to restart
+  any_errors_fatal: True
+  fail:
+    msg: "SolidFire eSDS service failed to restart properly. Check '/opt/sf/persist/var/log/sf-elementctl.info'"
+  when: systemd_status.rc != 0 or systemd_status.stdout not in "active"
+
+- name: "Check container status on {{ target_name }}/{{ target_MIP }}"
+  become: True
+  command: podman ps -a
+  register: podman_status
+
+- debug:
+    var: podman_status.stdout_lines
+
+- name: "Ensure we fail if any container is not up and running on {{ target_name }}/{{ target_MIP }}"
+  fail:
+    msg: "Not all containers are running. Check '/opt/sf/persist/var/log/sf-elementctl.info'"
+  when: >
+    podman_status.stdout_lines|length < 4 or
+    (podman_status.stdout|regex_findall('Up '))|length < 3 or
+    podman_status.stdout is not search('sfnetwd') or
+    podman_status.stdout is not search('element_auth') or
+    podman_status.stdout is not search('element')

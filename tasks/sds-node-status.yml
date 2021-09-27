@@ -1,0 +1,46 @@
+---
+- name: Check current mode
+  any_errors_fatal: True
+  when:
+    - response.json.result is defined
+    - response.json.result.currentMode is defined 
+  block:
+    - name: "Check current mode returned from {{ target_name }}/{{ target_MIP }}/ID:{{ target_id }}"
+      debug:
+        var: eResponse.json.result.currentMode
+
+    - name: "Ensure we quit if node {{ target_name }}/{{ target_MIP }}/ID:{{ target_id }} did not reach '{{ target_status }}' state after max {{ max_attempts }} attempts"
+      fail:
+        msg: "Please check why this operation is taking longer than expected. If confirmed nothing is wrong, just run this Ansible role again"
+      when: >
+        so_far_attempts|int == max_attempts|int and
+        response.json.result.requestedMode == target_status and
+        response.json.result.requestedMode != response.json.result.currentMode
+
+- name: Check error code
+  any_errors_fatal: True
+  when:
+    - response.json.error is defined
+  block:
+    - name: "Check error code if one was returned from {{ target_name }}/{{ target_MIP }}/ID:{{ target_id }}"
+      debug:
+        var: response.json.error
+
+    - name: "Ensure we fail if the mode transition is not allowed on node {{ target_name }}/{{ target_MIP }}/ID:{{ target_id }}"
+      fail:
+        msg: "Please resolve the error condiion then try again: {{ response.json.error.name }}"
+      when: >
+        response.json.error.name is defined and
+        response.json.error.name in [
+          'xUnresolvedClusterFaults',
+          'xNodeIDDoesNotExist',
+          'xNoTolerance',
+          'xExceededLimit'
+        ]
+
+    - name: Check if another node is already in Maintenance Mode
+      include_tasks: sds-node-maint-another.yml
+      when:
+        - yes_i_want_to_ignore_cluster_faults
+        - response.json.error.name is defined
+        - response.json.error.name == 'xAlreadyExists'

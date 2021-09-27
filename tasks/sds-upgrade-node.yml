@@ -1,0 +1,64 @@
+---
+- name: Ensure we calculate max attempts for EnableMaintenanceMode and DisableMaintenanceMode
+  set_fact:
+    sds_poll_max_maint_enable: "{{ (sds_poll_duration_maint_enable|int / sds_poll_interval_maint_enable|int)|int }}"
+    sds_poll_max_maint_disable: "{{ (sds_poll_duration_maint_disable|int / sds_poll_interval_maint_disable|int)|int }}"
+
+- name: "Check installed version again for {{ upgrade_node_name }}/{{ upgrade_node_MIP }}"
+  include_tasks: node-info.yml
+
+- name: "Make sure we record {{ upgrade_node_name }}/{{ upgrade_node_MIP }} as already upgraded if it is newly discovered running v{{ sf_new_pkg_ver }}"
+  set_fact:
+    sf_already_upgraded: "{{ sf_already_upgraded + [upgrade_node_name] }}"
+  when: >
+    sf_new_pkg_ver in upgrade_node_name|sf_get_node_info(sf_cluster_node_data, 'softwareVersion') and
+    upgrade_node_name not in sf_already_upgraded
+
+- name: Upgrade node if not already upgraded
+  any_errors_fatal: True
+  when: upgrade_node_name not in sf_already_upgraded
+  block:
+    - set_fact:
+        sf_in_maintenance_mode: False
+
+    - name: "Load EnableMaintenanceMode routine on {{ upgrade_node_name }}/{{ upgrade_node_MIP }} if it is not upgraded yet"
+      include_tasks: sds-node-maint-enable.yml
+      vars:
+        target_name: "{{ upgrade_node_name }}"
+        target_MIP: "{{ upgrade_node_MIP }}"
+        target_SIP: "{{ upgrade_node_name|sf_get_node_info(sf_cluster_node_data, 'sip') }}"
+        target_id: "{{ sf_node_ids[target_SIP] }}"
+        attempt_count: "{{ item }}"
+      when: not sf_in_maintenance_mode|bool
+      with_sequence: count="{{ sds_poll_max_maint_enable|int }}"
+
+    - name: "Loading service restart routine on {{ upgrade_node_name }}/{{ upgrade_node_MIP }} if it has entered Maintenance Mode"
+      include_tasks: sds-node-restart.yml
+      args:
+        apply:
+          delegate_to: "{{ upgrade_node_MIP }}"
+      vars:
+        target_name: "{{ upgrade_node_name }}"
+        target_MIP: "{{ upgrade_node_MIP }}"
+      when: sf_in_maintenance_mode|bool
+
+    - name: "Load DisableMaintenanceMode on {{ upgrade_node_name }}/{{ upgrade_node_MIP }} if the upgrade has been performed"
+      include_tasks: sds-node-maint-disable.yml
+      vars:
+        target_name: "{{ upgrade_node_name }}"
+        target_MIP: "{{ upgrade_node_MIP }}"
+        target_SIP: "{{ upgrade_node_name|sf_get_node_info(sf_cluster_node_data, 'sip') }}"
+        target_id: "{{ sf_node_ids[target_SIP] }}"
+        attempt_count: "{{ item }}"
+      when: sf_in_maintenance_mode|bool
+      with_sequence: count="{{ sds_poll_max_maint_disable|int }}"
+
+- name: "Cleaned up any copied RPM file(s) on {{ upgrade_node_name }}/{{ upgrade_node_MIP }} if applicable"
+  run_once: True
+  delegate_to: "{{ upgrade_node_MIP }}"
+  file:
+    path: "{{ solidfire_element_rpm_path }}"
+    state: absent
+  when: >
+    solidfire_element_rpm is defined and
+    solidfire_element_rpm is not search("http|ftp")

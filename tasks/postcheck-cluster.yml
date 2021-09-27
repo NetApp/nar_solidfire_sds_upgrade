@@ -1,0 +1,25 @@
+---
+- name: Check which nodes have been upgraded and fill in sf_upgraded list
+  delegate_to: localhost
+  run_once: True
+  block:
+    - name: Ensure we check final cluster version
+      include_tasks: cluster-api.yml
+      vars:
+        http_method: GET
+        url_cmd: "method=GetClusterVersionInfo"
+
+    - name: "Ensure we keep a record if some nodes have been upgraded to v{{ sf_new_pkg_ver }} in this session"
+      set_fact:
+        sf_upgraded: "{{ sf_upgraded + [sf_node_id_name_map[item.nodeID]] }}"
+      when: sf_node_id_name_map[item.nodeID] is not in sf_already_upgraded and item.nodeVersion == sf_new_pkg_ver
+      loop_control:
+        label: "{{ item.nodeID }}"
+      with_items: "{{ clus_api_response.json.result.clusterVersionInfo }}"
+
+    - debug:
+        msg: "Current cluster version: {{ clus_api_response.json.result.clusterVersion }}"
+
+  rescue:
+    - debug:
+        var: clus_api_response

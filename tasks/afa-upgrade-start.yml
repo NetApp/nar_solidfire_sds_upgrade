@@ -1,0 +1,51 @@
+---
+- name: Start a new upgrade operation
+  block:
+    - name: Ensure we increase cluster connection timeout value if needed
+      set_fact:
+        sf_cluster_connect_timeout: 60
+      when: sf_cluster_connect_timeout < 60
+
+    - name: "Start cluster upgrade ({{ sf_mgmt_virt_ip }}/{{ afa_storage_id }}/{{ solidfire_rtfi_pkg_version }})"
+      include_tasks: afa-hcc-api.yml
+      vars:
+        http_method: POST
+        url_cmd: "storage/1/upgrades"
+        expected_status: 202
+        cmd_body: {"config":{},"packageId":"{{ afa_package_id }}","storageId":"{{ afa_storage_id }}"}
+
+    - name: "Ensure we save the new upgrade ID if 'POST /storage/upgrades' returned one"
+      set_fact:
+        afa_upgrade_id: "{{ hcc_response.json.upgradeId }}"
+      when: hcc_response.json is defined and hcc_response.json.upgradeId is defined
+
+    - name: "Ensure we send a quesry if 'POST /storage/upgrdes' did not return a upgradeId"
+      when: afa_upgrade_id == "unknown"
+      block:
+        - name: Ensure we send a query if HCC API failed to return an upgrade ID while the upgrade operation has been accepted
+          include_tasks: afa-hcc-api.yml
+          vars:
+            http_method: GET
+            url_cmd: "storage/1/upgrades?includeCompleted=false&storageId={{ afa_storage_id }}"
+            expected_status: 200
+
+        - name: "Ensure we save the upgrade ID if 'GET /storage/upgrades' returned one"
+          set_fact:
+            afa_upgrade_id: "{{ hcc_response.json[0].upgradeId }}"
+          when: hcc_response.json is defined and hcc_response.json[0] is defined and hcc_response.json[0].upgradeId is defined
+
+- name: Check if start upgrade is successful
+  block:
+    - name: Ensure we quit if we did not get a valid upgrade ID from starting a new upgrade operation
+      fail:
+        msg: "Failed to get a valid upgrade ID from 'POST /storage/upgrades'"
+      when: afa_upgrade_id == "unknown"
+
+    - debug:
+        var: afa_upgrade_id
+
+    - name: Ensure we raise an upgrade event for starting a new operation
+      include_tasks: upgrade-event.yml
+      vars:
+        evt_msg: "Start"
+        package_name: "solidfire-rtfi"

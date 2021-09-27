@@ -1,0 +1,18 @@
+---
+- name: Ensure we have required tools installed
+  any_errors_fatal: True
+  delegate_to: localhost
+  run_once: True
+  block:
+    - name: Ensure the controller has the required python libraries
+      pip:
+        name: ['netaddr>=0.7.20', 'dnspython>=2.0.0']
+        state: present
+        extra_args: "{{ sf_pip_extra_args }}"
+
+    - name: Ensure the required minimum version of Ansible is installed
+      assert:
+        that:
+          - ansible_version['full'] is version('2.10.0', '>=')
+        fail_msg: >
+          "Error: Please upgrade the controller to a required version of Ansible, i.e. >= 2.10.0"

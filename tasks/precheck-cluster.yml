@@ -1,0 +1,71 @@
+---
+- include_tasks: sds-precheck-cluster.yml
+  when: node_type == "SFc100"
+
+- name: Check cluster conditions that may block upgrade
+  any_errors_fatal: True
+  delegate_to: localhost
+  run_once: True
+  block:
+    - name: Ensure we know the current cluster version
+      include_tasks: cluster-api.yml
+      vars:
+        http_method: GET
+        url_cmd: "method=GetClusterVersionInfo"
+
+    - set_fact:
+        precheck_clus_ver_resp: "{{ clus_api_response }}"
+        sf_installed_pkg_ver: "{{ clus_api_response.json.result.clusterVersion }}"
+
+    - name: Ensure we fail if the current cluster version is lower than minimum version supported
+      fail:
+        msg: "Ths tool requires cluster version to be at least {{ sf_api_version }}"
+      when: sf_installed_pkg_ver is version( sf_api_version, '<' )
+
+    - name: Ensure we fail if the user is trying to downgrade
+      fail:
+        msg: "The new version ({{ sf_new_pkg_ver }}) is lower than the installed version ({{ sf_installed_pkg_ver }}). Downgrade is not supported"
+      when: sf_installed_pkg_ver is version( sf_new_pkg_ver, '>' )
+
+    - name: Ensure we continue with success status if the requested version is already installed
+      set_fact:
+        sf_final_status: "success"
+      when: sf_installed_pkg_ver is version( sf_new_pkg_ver, '=' )
+      
+    - name: "Ensure we keep a record if some nodes are already running the requested version {{ sf_new_pkg_ver }}"
+      set_fact:
+        sf_already_upgraded: "{{ sf_already_upgraded + [sf_node_id_name_map[item.nodeID]] }}"
+      when: item.nodeVersion == sf_new_pkg_ver
+      loop_control: 
+        label: "{{ item.nodeID }}"
+      with_items: "{{ precheck_clus_ver_resp.json.result.clusterVersionInfo }}"
+
+    - name: "Ensure we know previously upgraded nodes already running v{{ sf_new_pkg_ver }}"
+      debug:
+        var: sf_already_upgraded
+
+    - name: Check cluster faults
+      when: not yes_i_want_to_ignore_cluster_faults
+      block:
+        - name: Ensure we check cluster faults if needed
+          include_tasks: cluster-api.yml
+          vars:
+            http_method: GET
+            url_cmd: "method=ListClusterFaults&faultTypes=current"
+
+        - name: Check unresolved blocking faults if needed
+          any_errors_fatal: True
+          block:
+            - set_fact:
+                err_msg: >-
+                  {{ item.details }}. Try again after the cluster fault is resolved.
+              when: item.blocksUpgrade == true and item.resolved == false
+              with_items: "{{ clus_api_response.json.result.faults }}"
+              no_log: True
+
+          always:
+             - name: Ensure we fail if any cluster fault is blocking upgrade and not to be ignored
+               fail:
+                 msg: "{{ err_msg }}"
+               when: err_msg is defined
+

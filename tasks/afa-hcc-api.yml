@@ -1,0 +1,66 @@
+---
+- name: Make an HCC API call
+  delegate_to: localhost
+  run_once: True
+  block:
+    - name: "Calling HCC API '{{ http_method }} /{{ url_cmd }}'"
+      uri:
+        url: "https://{{ mnode_ip }}/{{ url_cmd }}"
+        method: "{{ http_method }}"
+        timeout: "{{ sf_cluster_connect_timeout }}"
+        status_code: "{{ expected_status|default(200) }}"
+        validate_certs: "{{ sf_validate_certs | bool }}"
+        use_proxy: "{{ sf_use_proxy | bool }}"
+        force_basic_auth: yes
+        force: yes
+        follow_redirects: safe
+        return_content: yes
+        headers:
+          Authorization: "Bearer {{ auth_token_access }}"
+        body_format: json
+        body: "{{ cmd_body|default({}) }}"
+      register: hcc_response
+      until: hcc_response.status is in [expected_status|default(200), 401, 400]
+      retries: 3
+      delay: 10
+      no_log: True
+
+    - name: Ensure we fail if HCC API returned unexpected error
+      fail:
+        msg: "{{ hcc_response.json }}"
+      when: hcc_response.json is defined and (hcc_response.json.error is defined or hcc_response.json.errors is defined)
+
+  rescue:
+    - name: Ensure we fail if HCC API returned an unexpected status code
+      fail:
+        msg: "{{ hcc_response }}"
+      when: >
+        (hcc_response.status not in [expected_sttus|default(200), 401, 400]) or
+        (hcc_response.status == 400 and
+         hcc_response.json is defined and
+         hcc_response.json.errors is defined and
+         hcc_response.json.errors[0] is defined and
+         hcc_response.json.errors[0].message is defined and
+         hcc_response.json.errors[0].message != "There is already an operation of this type for the specified cluster.")
+
+    - name: Redo authenticate if that is the reason for HCC API failure
+      when: hcc_response.status == 401 # unauthorized
+      block:
+        - set_fact:
+            temp_method: "{{ http_method }}"
+            temp_cmd: "{{ url_cmd|default() }}"
+            temp_body: "{{ cmd_body|default({}) }}"
+            temp_status: "{{ expected_status|default(200) }}"
+
+        - name: Ensure we do authentication again if access is timed out
+          include_tasks: afa-authentication.yml
+          vars:
+            expected_status: 200
+
+        - name: Retry API after redo authentication
+          include_tasks: afa-hcc-api.yml
+          vars:
+            http_method: "{{ temp_method }}"
+            url_cmd: "{{ temp_cmd }}"
+            cmd_body: "{{ temp_body }}"
+            expected_status: "{{ temp_status }}"

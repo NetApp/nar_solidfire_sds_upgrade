@@ -1,0 +1,28 @@
+---
+- name: Check required variables
+  block:
+    - name: Ensure we know the package manager
+      package_facts:
+        manager: auto
+
+    - name: Ensure we fail if the eSDS package is not specified
+      fail:
+        msg: "The SolidFire eSDS RPM location variable has not been configured (solidfire_element_rpm)"
+      when: solidfire_element_rpm is undefined or not solidfire_element_rpm
+
+    - set_fact:
+        sf_regex_repl_1: '^.*-element-(.*)-..el..x86_64.rpm.*$'
+        sf_regex_repl_2: '\1'
+      no_log: True
+
+    - name: Ensure we know the version of the given RPM package
+      set_fact:
+        sf_new_pkg_ver: "{{ solidfire_element_rpm|regex_replace( sf_regex_repl_1, sf_regex_repl_2 ) }}"
+      failed_when: sf_new_pkg_ver is undefined or
+        not sf_new_pkg_ver or
+        sf_new_pkg_ver is match( 'http|ftp|/' )
+
+- name: "Ensure the RPM path is valid"
+  include_role:
+    name: nar_solidfire_sds_install
+    tasks_from: validate-rpm.yml

@@ -1,0 +1,105 @@
+---
+- name: Start cluster upgrade operation
+  any_errors_fatal: True
+  delegate_to: localhost
+  run_once: True
+  block:
+    - name: "Try to start cluster upgrade operation for v{{ sf_new_pkg_ver }} on cluster {{ sf_mgmt_virt_ip }}"
+      include_tasks: cluster-api.yml
+      vars:
+         http_method: POST
+         cmd_body: {"method":"StartUpgrade","params":{"packageName":"solidfire-element-{{ sf_new_pkg_ver }}"}}
+
+    - name: "Save a flag if an upgrade operation for v{{ sf_new_pkg_ver }} is already in progress"
+      set_fact:
+        upgrade_already_in_progress: True
+      when:
+        - clus_api_response.json is defined
+        - clus_api_response.json.error is defined
+        - clus_api_response.json.error.message is defined
+        - clus_api_response.json.error.name is defined
+        - clus_api_response.json.error.name == "xSoftwareInstallInProgress"
+        - clus_api_response.json.error.message is search(sf_new_pkg_ver|string)
+
+    - name: Ensure we fail if the cluster API returned unexpected error
+      fail:
+        msg: "{{ clus_api_response.json.error }}"
+      when:
+        - clus_api_response.json is defined
+        - clus_api_response.json.error is defined
+        - upgrade_already_in_progress is undefined
+
+    - name: "Raise an event for starting upgrade operation if it hasn't been done before"
+      include_tasks: upgrade-event.yml
+      vars:
+        evt_msg: "Start"
+        package_name: "solidfire-element"
+      when: upgrade_already_in_progress is undefined
+
+- set_fact:
+    sf_host_ssh_addr: "{{ hostvars[inventory_hostname]['ansible_env'].SSH_CONNECTION.split(' ')[2] }}"
+  when: hostvars[inventory_hostname]['ansible_env'].SSH_CONNECTION.split(' ')[2] is defined
+  no_log: True
+
+- set_fact:
+    sf_host_mip: "{{ sf_host_ssh_addr|sf_get_node_info(sf_cluster_node_data, 'mip') }}"
+    sf_host_name: "{{ sf_host_ssh_addr|sf_get_node_info(sf_cluster_node_data, 'name') }}"
+  when: sf_host_ssh_addr is defined and sf_host_ssh_addr
+  no_log: True
+
+- name: "Ensure we pre-install v{{ sf_new_pkg_ver }} package on nodes not yet upgraded"
+  include_role:
+    name: nar_solidfire_sds_install
+    tasks_from: install-rpm.yml
+  when: hostvars[inventory_hostname]['sf_host_name'] not in sf_already_upgraded
+
+- name: "Ensure we load upgrade tasks on every reachable node"
+  run_once: True
+  block:
+    - include_tasks: sds-upgrade-node.yml
+      args:
+        apply:
+          delegate_to: "{{ upgrade_node_MIP }}"
+      vars:
+        upgrade_node_name: "{{ hostvars[node_label]['sf_host_name'] }}"
+        upgrade_node_MIP: "{{ hostvars[node_label]['sf_host_mip'] }}"
+      loop_control:
+        loop_var: node_label
+      loop: "{{ ansible_play_hosts }}"
+      when: hostvars[node_label]['sf_host_name'] not in sf_already_upgraded
+
+- name: Finish cluster upgrade operation
+  run_once: True
+  delegate_to: localhost
+  block:
+    - name: Try to finish cluster upgrade if node upgrades are completed without error
+      include_tasks: cluster-api.yml
+      vars:
+        http_method: POST
+        cmd_body: {"method":"FinishUpgrade"}
+
+    - name: Ensure we fail if the cluster API returned unexpected error
+      fail:
+        msg: "{{ clus_api_response.json.error }}"
+      when: clus_api_response.json is defined and clus_api_response.json.error is defined
+
+    - name: Ensure we raise final upgrade event if the operation is finished
+      include_tasks: upgrade-event.yml
+      vars:
+        evt_msg: "Complete"
+        package_name: "solidfire-element"
+
+    - set_fact:
+        sf_final_status: "success"
+
+  rescue:
+    - name: Ensure we rescue the case if the error is due to allowing a subset of cluster nodes for upgrade
+      set_fact:
+        sf_final_status: "success"
+      when:
+        - clus_api_response.status == 200
+        - clus_api_response.json.error is defined
+        - clus_api_response.json.error.message is defined
+        - clus_api_response.json.error.message == "All nodes must be at the same version to complete an upgrade"
+        - sf_node_ids|length > ansible_play_hosts|length
+        - sf_allow_cluster_subset_upgrade

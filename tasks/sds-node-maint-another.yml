@@ -1,0 +1,13 @@
+---
+# These tasks handle a special case in which the variable yes_i_want_to_ignore_cluster_fauts
+# is set and anohter node is already in maintenance mode
+
+- set_fact:
+    maint_duration_splits: "{{ sf_maint_mode_duration.split(':') }}"
+
+- set_fact:
+    maint_duration_seconds: "{{ maint_duration_splits[0]|int * 60 * 60 + maint_duration_splits[1]|int * 60 + maint_duration_splits[2]|int }}"
+
+- name: "Another node is in Maintenance Mode!. Duration is set to '{{ sf_maint_mode_duration }}'. Wait for it to finish then try again"
+  pause:
+    seconds: "{{ maint_duration_seconds|int }}"

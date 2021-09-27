@@ -1,0 +1,20 @@
+---
+- name: Query all installations to find all clusters
+  block:
+    - name: Get all inventory installation IDs
+      include_tasks: afa-hcc-api.yml
+      vars:
+        http_method: GET
+        url_cmd: "inventory/1/installations"
+
+    - set_fact:
+        inst_response: "{{ hcc_response }}" 
+
+    - name: Query each installation by ID
+      include_tasks: afa-storage-id.yml
+      vars:
+        inst_id: "{{ installation.id }}"
+      loop_control:
+        loop_var: installation
+      loop: "{{ inst_response.json.installations }}"
+      when: afa_storage_id == "unknown"
