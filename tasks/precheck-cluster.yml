@@ -3,7 +3,6 @@
   when: node_type == "SFc100"
 
 - name: Check cluster conditions that may block upgrade
-  any_errors_fatal: True
   delegate_to: localhost
   run_once: True
   block:
@@ -44,28 +43,28 @@
       debug:
         var: sf_already_upgraded
 
-    - name: Check cluster faults
-      when: not yes_i_want_to_ignore_cluster_faults
-      block:
-        - name: Ensure we check cluster faults if needed
-          include_tasks: cluster-api.yml
-          vars:
-            http_method: GET
-            url_cmd: "method=ListClusterFaults&faultTypes=current"
+    - name: Retrieve cluster faults
+      include_tasks: cluster-api.yml
+      vars:
+        http_method: GET
+        url_cmd: "method=ListClusterFaults&faultTypes=current"
 
-        - name: Check unresolved blocking faults if needed
-          any_errors_fatal: True
-          block:
-            - set_fact:
-                err_msg: >-
-                  {{ item.details }}. Try again after the cluster fault is resolved.
-              when: item.blocksUpgrade == true and item.resolved == false
-              with_items: "{{ clus_api_response.json.result.faults }}"
-              no_log: True
+    - name: Check if anything could block upgrade if fault list is not empty
+      set_fact:
+        sf_blocking_faults: "{{ sf_blocking_faults + [item.code] }}"
+      when: item.blocksUpgrade == true and item.resolved == false
+      with_items: "{{ clus_api_response.json.result.faults }}"
 
-          always:
-             - name: Ensure we fail if any cluster fault is blocking upgrade and not to be ignored
-               fail:
-                 msg: "{{ err_msg }}"
-               when: err_msg is defined
+    - name: Print upgrade-blocking faults
+      debug:
+        var: sf_blocking_faults
 
+    - name: Ensure we quit if any upgrade-blocking fault exists and not to be ignored
+      fail:
+        msg: "Please resolve the above cluster faults then try again"
+      when: sf_blocking_faults|length > 0 and not yes_i_want_to_ignore_cluster_faults
+
+    - name: Ensure we continue if any upgrade-blocking fault exists but user chose to ignore it
+      debug:
+        msg: "Force to continue because user has set a variable to ignore the cluster faults"
+      when: sf_blocking_faults|length > 0 and yes_i_want_to_ignore_cluster_faults

@@ -20,6 +20,8 @@ Requirements for eSDS cluster upgrade
 
 * This role performs some operations directly on each storage node. So, the controller system where Ansible is run needs to have network connections to all nodes in the target storage cluster. The inventory file for this role needs host information for all nodes, the target eSDS storage cluster MVIP and credentials, and the path to the target Element solidfire-element RPM package downloaded from NetApp Support Site.
 
+* This role requires root or superuser privilege to run.
+
 Requirements for SolidFire all-flash cluster upgrade
 ====================================================
 * This role requires that the target storage cluster has NetApp SolidFire all-flash storage nodes running minimum Element version 12.2 or later and is managed by a 12.2 or later  management node (mNode) running latest NetApp Hybrid Cloud Control (HCC) services (https://<mNode_IP>).
@@ -45,16 +47,16 @@ Role Variables
 | sf_allow_resume_paused_upgrade      | No       | False    | "True" will allow resumption of a paused upgrade operation                            | AFA      |
 | sf_cluster_connect_timeout          | No       | 20       | The API connection timeout value in seconds                                           | eSDS/AFA |
 | sf_api_version                      | No       | 12.2     | The version of cluster API (should not be modified)                                   | eSDS/AFA |
-| yes_i_want_to_ignore_cluster_faults | No       | False    | "True" will allow upgrade to proceed even a blocking fault is present, not recommended| eSDS/AFA |
+| yes_i_want_to_ignore_cluster_faults | No       | False    | "True" will allow upgrade to proceed even if blocking faults exit, not recommended    | eSDS/AFA |
 | sf_use_proxy                        | No       | True     | Whether to use proxy configuration on the target host. See note [2]                   | eSDS/AFA |
-| sf_validate_certs                   | No       | True     | Whether to validate SSL/TLS certificates and fail if invalid                          | eSDS/AFA |
+| sf_validate_certs                   | No       | False    | Whether to validate SSL/TLS certificates                                              | eSDS/AFA |
 | sf_pip_extra_args                   | No       | ""       | Specify extra Python pip arguments when installing controller lib/modules             | eSDS/AFA |
 | sf_maint_mode_duration              | No       | 02:00:00 | Max time duration in HH:MM:SS format that a node will stay in maintenance mode        | eSDS     |
 | sf_allow_cluster_subset_upgrade     | No       | False    | "True" allows upgrading a subset of cluster nodes without updating the                | eSDS     |
 |                                     |          |          | cluster version until all cluster nodes have been upgraded                            |          |
 
-Notes:
-======
+Notes
+-----
 \[1\]: Example RPM path:
 ```
 Example of URL : `http://<server><:port>/<path>/solidfire-element-W.X.Y.Z-N.el{7,8}.x86_64.rpm`
@@ -70,19 +72,19 @@ The "False" value might have no effect due to a bug in Ansible version 2.10. Ins
 
 
 Dependencies
-============
+------------
 The `nar_solidfire_sds_install` role, available on GitHub (https://github.com/NetApp-Automation/nar_solidfire_sds_install) provides a few of the tasks used by this `nar_solidfire_sds_upgrade` role.
 
 
 Example Playbooks
-=================
+-----------------
 Playbook file name: `update-eSDS-cluster.yml`
 
 ```
 - name: Rolling Upgrade of SolidFire Enterprise SDS
-  hosts: all
+  remote_user: <root or superuser ID>
   gather_facts: True
-
+  hosts: all
   roles:
     - role: nar_solidfire_sds_upgrade
 ```
@@ -90,18 +92,52 @@ Playbook file name: `update-eSDS-cluster.yml`
 Playbook file name: 'update-afa-cluster.yml'
 ```
 - name: Upgrade AFA cluster via HCC
-  hosts: localhost
+  remote_user: <root or superuser ID>
   gather_facts: True
-
+  hosts: localhost
   roles:
     - role: nar_solidfire_sds_upgrade
 ```
 
+Example Inventory
+-----------------
+```
+all:
+  hosts:
+    host1:
+      ansible_host: <host1 IP>
+    host2:
+      ansible_host: <host2 IP>
+    host3:
+      ansible_host: <host3 IP>
+    host4:
+      ansible_host: <host4 IP>
+  vars:
+    # variables needed by both eSDS and AFA clusters
+    ansible_python_interpreter: <full path on target hosts to a python interpreter, such as /usr/libexec/platform-python>
+    become: true
+    ansible_password: <login user password> # prefer vault key
+    ansible_become_pass: <privilege escalation password> # or --ask-become-pass on command line to prompt for input
+
+    sf_mgmt_virt_ip: <IP address for the cluster management interface>
+    sf_cluster_admin_username: <username to communicate with cluster management interface>
+    sf_cluster_admin_passwd: <password to communicate with clsuter management interface>
+
+    # variables for eSDS cluster only
+    solidfire_element_rpm: <RPM package file path on controller or remote server>
+
+    # variables for AFA cluster only
+    mnode_ip: <the management node IP address>
+    solidfire_rtfi_pkg_version: <a SolidFire Element package version, such as 12.3.1.959>
+    hcc_auth_username: <HCI UI quthentication username>
+    hcc_auth_passwd: <HCI UI authentication password>
+```
+
 License
-=======
+-------
 MIT
 
 Author Information
-==================
+------------------
 NetApp
 https://www.netapp.com

@@ -5,7 +5,7 @@
       vars:
         http_method: PUT
         url_cmd: "storage/1/upgrades/{{ upg_id }}?action=resume"
-        cmd_body: {"action":"resume","config":{}}
+        cmd_body: {"action":"resume","config":{"ignoreExistingDriveFaults":"{{ yes_i_want_to_ignore_cluster_faults }}","ignoredClusterFaults":"{{ sf_blocking_faults }}"}}
 
     - name: Ensure we raise an upgrade event for resuming a paused operation
       include_tasks: upgrade-event.yml

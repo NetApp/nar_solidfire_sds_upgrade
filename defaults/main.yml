@@ -76,7 +76,7 @@ sf_use_proxy: False
 # DO NOT change this unless you know what you're doing, you know the source is
 # reputable and/or was told to modify it by NetApp SolidFire support.
 #
-sf_validate_certs: True
+sf_validate_certs: False
 
 # By default, we will end the play if the node count in the inventory is smaller
 # than the node count for the cluster.  In the inverse case, nodes that are not
@@ -88,3 +88,5 @@ sf_allow_cluster_subset_upgrade: False
 # For AFA cluster upgrade only. This var must be true if users wants to resume
 # a paused upgrade operation.
 sf_allow_resume_paused_upgrade: False
+
+hcc_api_connection_timeout: 120

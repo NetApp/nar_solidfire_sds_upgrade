@@ -15,7 +15,7 @@
 
     - name: Ensure we fail if the cluster's MVIP address is missing or invalid
       fail:
-        msg: "MVIP address (sf_mgmt_virt_ip) is not a valid IP address"
+        msg: "Please make sure variable 'sf_mgmt_virt_ip' is assigned a valid IP address then try again"
       when: sf_mgmt_virt_ip is undefined or not sf_mgmt_virt_ip|ipaddr
  
     - name: Ensure the MVIP is reachable

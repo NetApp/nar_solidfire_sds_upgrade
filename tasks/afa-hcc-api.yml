@@ -7,7 +7,7 @@
       uri:
         url: "https://{{ mnode_ip }}/{{ url_cmd }}"
         method: "{{ http_method }}"
-        timeout: "{{ sf_cluster_connect_timeout }}"
+        timeout: "{{ hcc_api_connection_timeout }}"
         status_code: "{{ expected_status|default(200) }}"
         validate_certs: "{{ sf_validate_certs | bool }}"
         use_proxy: "{{ sf_use_proxy | bool }}"
@@ -20,10 +20,6 @@
         body_format: json
         body: "{{ cmd_body|default({}) }}"
       register: hcc_response
-      until: hcc_response.status is in [expected_status|default(200), 401, 400]
-      retries: 3
-      delay: 10
-      no_log: True
 
     - name: Ensure we fail if HCC API returned unexpected error
       fail:

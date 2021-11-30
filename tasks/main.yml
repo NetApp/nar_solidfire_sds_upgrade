@@ -13,6 +13,7 @@
     sf_installed_pkg_ver: "unknown"
     sf_new_pkg_ver: "unknown"
     sf_final_status: "unknown"
+    sf_blocking_faults: []
   run_once: True
 
 - name: Ensure we check prerequisites on controller

@@ -12,7 +12,7 @@
         http_method: POST
         url_cmd: "storage/1/upgrades"
         expected_status: 202
-        cmd_body: {"config":{},"packageId":"{{ afa_package_id }}","storageId":"{{ afa_storage_id }}"}
+        cmd_body: {"config":{"ignoreExistingDriveFaults":"{{ yes_i_want_to_ignore_cluster_faults }}","ignoredClusterFaults":"{{ sf_blocking_faults }}"},"packageId":"{{ afa_package_id }}","storageId":"{{ afa_storage_id }}"}
 
     - name: "Ensure we save the new upgrade ID if 'POST /storage/upgrades' returned one"
       set_fact:

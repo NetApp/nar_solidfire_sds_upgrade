@@ -10,9 +10,7 @@
         state: present
         extra_args: "{{ sf_pip_extra_args }}"
 
-    - name: Ensure the required minimum version of Ansible is installed
-      assert:
-        that:
-          - ansible_version['full'] is version('2.10.0', '>=')
-        fail_msg: >
-          "Error: Please upgrade the controller to a required version of Ansible, i.e. >= 2.10.0"
+    - name: Load ansible version check task
+      include_role:
+        name: nar_solidfire_sds_compliance
+        tasks_from: check_ansible_version.yml
